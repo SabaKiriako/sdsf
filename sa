@@ -1,0 +1,39 @@
+from PyQt5.QtWidgets import QWidget, QApplication, QLabel, QVBoxLayout,QPushButton,QGridLayout
+from PyQt5.QtGui import QPixmap, QColor, QImage
+from PyQt5.QtCore import Qt
+import cv2
+
+class MainWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Calculator")
+        self.setLayout(QVBoxLayout())
+        self.keypad()
+
+    def keypad(self):
+        container = QWidget()
+        container.setLayout(QGridLayout())
+
+        #Buttons
+        result_field = QLabel()
+        # image = cv2.resize(cv2.imread('OUR JOURNEY.jpg'), (100, 100))
+        # print(image)
+        btn_result = QPushButton('Etner')
+
+        container.layout().addWidget(btn_result,0,0)
+        self.layout().addWidget(container)
+
+        self.show()
+
+    # def convert_cv_qt(self, cv_img):
+    #     """Convert from an opencv image to QPixmap"""
+    #     rgb_image = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+    #     h, w, ch = rgb_image.shape
+    #     bytes_per_line = ch * w
+    #     convert_to_Qt_format = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
+    #     p = convert_to_Qt_format.scaled(self.disply_width, self.display_height, Qt.KeepAspectRatio)
+    #     return QPixmap.fromImage(p)
+
+app = QApplication([])
+mw = MainWindow()
+app.exec()
