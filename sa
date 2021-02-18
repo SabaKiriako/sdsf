@@ -1,39 +1,316 @@
-from PyQt5.QtWidgets import QWidget, QApplication, QLabel, QVBoxLayout,QPushButton,QGridLayout
-from PyQt5.QtGui import QPixmap, QColor, QImage
+from PyQt5.QtWidgets import QWidget, QApplication, QLabel, QVBoxLayout,QPushButton,QGridLayout, QFrame, QRadioButton, QButtonGroup
+from PyQt5.QtGui import QPixmap, QColor, QImage, QPainter, QPen
+from PyQt5 import QtGui
 from PyQt5.QtCore import Qt
 import cv2
+import queue
+import sys
+from flask import Flask
+import threading
+from flask import request
+
+app = Flask(__name__)
+
+from PyQt5.QtCore import Qt, QRect
+from PyQt5.QtGui import QBrush, QImage, QPainter, QPixmap, QWindow
+from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
+
+
+def mask_image(image, imgtype='jpg', size=100):
+    """Return a ``QPixmap`` from *imgdata* masked with a smooth circle.
+
+    *imgdata* are the raw image bytes, *imgtype* denotes the image type.
+
+    The returned image will have a size of *size* × *size* pixels.
+
+    """
+    # Load image and convert to 32-bit ARGB (adds an alpha channel):
+    # image = QImage.fromData(imgdata, imgtype)
+    # image.convertToFormat(QImage.Format_ARGB32)
+
+    # Create the output image with the same dimensions and an alpha channel
+    # and make it completely transparent:
+    out_img = QImage(size, size, QImage.Format_ARGB32)
+    out_img.fill(Qt.transparent)
+
+    # Create a texture brush and paint a circle with the original image onto
+    # the output image:
+    brush = QBrush(image)        # Create texture brush
+    painter = QPainter(out_img)  # Paint the output image
+    painter.setBrush(brush)      # Use the image texture brush
+    painter.setPen(Qt.NoPen)     # Don't draw an outline
+    painter.setRenderHint(QPainter.Antialiasing, True)  # Use AA
+    painter.drawEllipse(0, 0, size, size)  # Actually draw the circle
+    painter.end()                # We are done (segfault if you forget this)
+
+    # Convert the image to a pixmap and rescale it.  Take pixel ratio into
+    # account to get a sharp image on retina displays:
+    out_img.convertToFormat(QImage.Format_RGB888)
+    pr = QWindow().devicePixelRatio()
+    pm = QPixmap.fromImage(out_img)
+    pm.setDevicePixelRatio(pr)
+    size *= pr
+    pm = pm.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+    return pm
+
+def mask_image2(image, imgtype='jpg', size=100 , color='black'):
+    """Return a ``QPixmap`` from *imgdata* masked with a smooth circle.
+
+    *imgdata* are the raw image bytes, *imgtype* denotes the image type.
+
+    The returned image will have a size of *size* × *size* pixels.
+
+    """
+    out_img = QImage(size, size, QImage.Format_ARGB32)
+    out_img.fill(Qt.transparent)
+
+    brush = QBrush(image)        # Create texture brush
+    painter = QPainter(out_img)  # Paint the output image
+    # painter.setBrush(brush)      # Use the image texture brush
+    if color == 'red':
+        painter.setPen(QPen(Qt.red, 3, Qt.SolidLine))     # Don't draw an outline
+    elif color == 'green':
+        painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))     # Don't draw an outline
+    else:
+        painter.setPen(QPen(Qt.black, 3, Qt.SolidLine))     # Don't draw an outline
+    painter.setRenderHint(QPainter.Antialiasing, True)  # Use AA
+    painter.drawEllipse(0+1, 0+1, size-2, size-2)  # Actually draw the circle
+    painter.end()                # We are done (segfault if you forget this)
+
+    # Convert the image to a pixmap and rescale it.  Take pixel ratio into
+    # account to get a sharp image on retina displays:
+    out_img.convertToFormat(QImage.Format_RGB888)
+    pr = QWindow().devicePixelRatio()
+    pm = QPixmap.fromImage(out_img)
+    pm.setDevicePixelRatio(pr)
+    size *= pr
+    pm = pm.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+    return pm
+
+
+class Person_in_GUI():
+    def __init__(self, image_1=None, image_1_top=None, image_2=None, image_2_top=None, name=None):
+        self.__image_1 = image_1
+        self.__image_2 = image_2
+        self.__image_1_top = image_1_top
+        self.__image_2_top = image_2_top
+        self.__name = name
+
+    def image1_get(self):
+        return self.__image_1
+
+    def image1top_get(self):
+        return self.__image_1_top
+
+    def image2_get(self):
+        return self.__image_2
+
+    def image2top_get(self):
+        return self.__image_2_top
+
+    def name_get(self):
+        return self.__name
+
+
 
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Calculator")
+        self.setWindowTitle("Authorization App")
+        self.setGeometry(0, 0, 300, 700)
+        # self.setFixedSize(300, 700)
         self.setLayout(QVBoxLayout())
+        self.count_True = 0
+        self.lock = True
+        self.count_Total = 0
+
+        #Setting Background Image
+        self.background = QtGui.QPixmap("Untitled.png")
+        palette = QtGui.QPalette()
+        palette.setBrush(QtGui.QPalette.Background,QtGui.QBrush(self.background))
+        self.setPalette(palette)
+
+
+        #Initializing Elements
+        self.GUI_elements = []
+        self.persons_queue = queue.Queue()
+        self.image_init = './person1.jpeg'
+        self.image_size = 100
+        self.nb_of_persons = 3
+        initial_persons = [self.image_init, self.image_init, 'Green', 'Saba ']
+        for i in range(self.nb_of_persons):
+            self.persons_queue.put(initial_persons)
         self.keypad()
+
+    def change(self):
+        data = request.get_json()
+        self.persons_queue.get()
+        self.persons_queue.put(data)
+        self.count_Total += 1
+        self.lock = False
+        self.group1.setExclusive(False)
+        self.group2.setExclusive(False)
+        self.group3.setExclusive(False)
+        self.rbtn5.setChecked(self.rbtn3.isChecked())
+        self.rbtn6.setChecked(self.rbtn4.isChecked())
+        self.rbtn3.setChecked(self.rbtn1.isChecked())
+        self.rbtn4.setChecked(self.rbtn2.isChecked())
+        self.rbtn1.setChecked(False)
+        self.rbtn2.setChecked(False)
+        self.group1.setExclusive(True)
+        self.group2.setExclusive(True)
+        self.group3.setExclusive(True)
+
+
+        for frame, item in zip(self.GUI_elements, list(self.persons_queue.queue)[::-1]):
+            image = cv2.resize(cv2.imread(item[0]), (self.image_size, self.image_size))
+            image = QtGui.QImage(image, image.shape[0], image.shape[1], QtGui.QImage.Format_RGB888)
+            image = mask_image(image)
+            # frame.image1_get().setStyleSheet('background-color: transparent')
+            frame.image1_get().setPixmap(QPixmap(image))
+
+            image = mask_image2(image, color=item[2])
+            # frame.image1top_get().setStyleSheet('background-color: transparent')
+            frame.image1top_get().setPixmap(QPixmap(image))
+
+            image = cv2.resize(cv2.imread(item[1]), (self.image_size, self.image_size))
+            image = QtGui.QImage(image, image.shape[0], image.shape[1], QtGui.QImage.Format_RGB888)
+            image = mask_image(image)
+            # frame.image2_get().setStyleSheet('background-color: transparent')
+            frame.image2_get().setPixmap(QPixmap(image))
+
+            image = mask_image2(image, color=item[2])
+            # frame.image2top_get().setStyleSheet('background-color: transparent')
+            frame.image2top_get().setPixmap(QPixmap(image))
+
+            frame.name_get().setText(item[3])
+        self.num.setText(str(self.count_Total))
+        self.lock = True
+        return "Done"
+
+    def thread_start(self):
+        app.run(host="0.0.0.0", port=8090)
+
+    def onClicked(self):
+        radioBtn = self.sender()
+        if radioBtn.isChecked() and radioBtn.text() =='True' and self.lock == True:
+            self.count_True += 1
+            print(self.count_True)
 
     def keypad(self):
         container = QWidget()
         container.setLayout(QGridLayout())
+        image = cv2.resize(cv2.imread(self.image_init), (self.image_size, self.image_size))
+        image = QtGui.QImage(image, image.shape[0],image.shape[1],QtGui.QImage.Format_RGB888)
+        image = mask_image(image)
+        image2 = mask_image2(image,'black')
+        print(image)
+        position = 0
 
-        #Buttons
-        result_field = QLabel()
-        # image = cv2.resize(cv2.imread('OUR JOURNEY.jpg'), (100, 100))
-        # print(image)
-        btn_result = QPushButton('Etner')
+        for persons in list(self.persons_queue.queue):
+            #Buttons
 
-        container.layout().addWidget(btn_result,0,0)
+
+
+            Image1 = QLabel()
+            Image1.setFrameShape(QFrame.Box)
+            Image1.setFrameShadow(QFrame.Raised)
+            Image1.setLineWidth(2)
+            Image1.setStyleSheet('background-color: transparent ')
+            Image1.setPixmap(QPixmap(image))
+
+            Image1top = QLabel()
+            Image1top.setFrameShape(QFrame.Box)
+            Image1top.setFrameShadow(QFrame.Raised)
+            Image1top.setLineWidth(2)
+            Image1top.setStyleSheet('background-color: transparent ')
+            Image1top.setPixmap(QPixmap(image2))
+
+            Image2 = QLabel()
+            Image2.setPixmap(QPixmap(image))
+            Image2.setFrameShape(QFrame.Box)
+            Image2.setFrameShadow(QFrame.Sunken)
+            Image2.setLineWidth(2)
+            Image2.setStyleSheet('background-color: transparent')
+
+            Image2top = QLabel()
+            Image2top.setFrameShape(QFrame.Box)
+            Image2top.setFrameShadow(QFrame.Raised)
+            Image2top.setLineWidth(2)
+            Image2top.setStyleSheet('background-color: transparent ')
+            Image2top.setPixmap(QPixmap(image2))
+
+            Name = QPushButton(persons[3])
+            Name.setStyleSheet("font : 'Roboto' ; font-weight: bold;color : rgb(89,0,155);background-color: rgb(255,255,255);"
+                               "border-radius: 6px; border-width: 3px;")
+
+            result_field3 = QLabel()
+            result_field3.setText(' ')
+
+            result_field4 = QLabel()
+            result_field4.setText(' ')
+
+
+            container.layout().addWidget(Image1, 4+position, 0, 3, 3)
+            container.layout().addWidget(Image1top, 4+position, 0, 3, 3)
+            container.layout().addWidget(Image2, 4+position, 4, 3, 3)
+            container.layout().addWidget(Image2top, 4+position, 4, 3, 3)
+            container.layout().addWidget(Name, 2+position, 2, 2, 3)
+            container.layout().addWidget(result_field3, 7+position, 3, 1, 3)
+            container.layout().addWidget(result_field4, 8+position, 3, 1, 3)
+
+            position += 11
+
+            self.GUI_elements.append(Person_in_GUI(Image1, Image1top, Image2, Image2top, Name))
+
+        self.group1 = QButtonGroup()
+        self.rbtn1 = QRadioButton('True')
+        self.rbtn2 = QRadioButton('False')
+        self.group1.addButton(self.rbtn1)
+        self.group1.addButton(self.rbtn2)
+        self.rbtn1.toggled.connect(self.onClicked)
+        self.rbtn2.toggled.connect(self.onClicked)
+        container.layout().addWidget(self.rbtn1, 7, 2, 1, 2)
+        container.layout().addWidget(self.rbtn2, 7, 4, 1, 1)
+
+        self.group2 = QButtonGroup()
+        self.rbtn3 = QRadioButton('True')
+        self.rbtn4 = QRadioButton('False')
+        self.group2.addButton(self.rbtn3)
+        self.group2.addButton(self.rbtn4)
+        self.rbtn3.toggled.connect(self.onClicked)
+        self.rbtn4.toggled.connect(self.onClicked)
+        container.layout().addWidget(self.rbtn3, 7+11, 2, 1, 2)
+        container.layout().addWidget(self.rbtn4, 7+11, 4, 1, 1)
+
+        self.group3 = QButtonGroup()
+        self.rbtn5 = QRadioButton('True')
+        self.rbtn6 = QRadioButton('False')
+        self.group3.addButton(self.rbtn5)
+        self.group3.addButton(self.rbtn6)
+        self.rbtn5.toggled.connect(self.onClicked)
+        self.rbtn6.toggled.connect(self.onClicked)
+        container.layout().addWidget(self.rbtn5, 7+22, 2, 1, 2)
+        container.layout().addWidget(self.rbtn6, 7+22, 4, 1, 1)
+
+        self.num = QLabel()
+        self.num.setText(str(self.count_Total))
+        container.layout().addWidget(self.num, 0, 6, 1, 1)
+
         self.layout().addWidget(container)
-
         self.show()
+        new = threading.Thread(target=self.thread_start)
+        new.start()
 
-    # def convert_cv_qt(self, cv_img):
-    #     """Convert from an opencv image to QPixmap"""
-    #     rgb_image = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
-    #     h, w, ch = rgb_image.shape
-    #     bytes_per_line = ch * w
-    #     convert_to_Qt_format = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
-    #     p = convert_to_Qt_format.scaled(self.disply_width, self.display_height, Qt.KeepAspectRatio)
-    #     return QPixmap.fromImage(p)
 
-app = QApplication([])
-mw = MainWindow()
-app.exec()
+
+
+
+if __name__ == "__main__":
+    app2 = QApplication(sys.argv)
+    mw = MainWindow()
+    app.add_url_rule('/Change', 'Change', view_func=mw.change,methods=['POST'])
+    print(app.url_map)
+    app2.exec()
